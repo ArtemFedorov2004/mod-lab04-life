@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Threading;
+using System.IO;
+using System.Text.Json;
 
 namespace cli_life
 {
@@ -86,17 +86,73 @@ namespace cli_life
             }
         }
     }
+    record BoardProps(
+            int width,
+            int height,
+            int cellSize,
+            double lifeDensity
+            );
+
     class Program
     {
         static Board board;
-        static private void Reset()
+
+        static private void SetUpBoard(string file)
         {
-            board = new Board(
-                width: 50,
-                height: 20,
-                cellSize: 1,
-                liveDensity: 0.5);
+            string jsonString = File.ReadAllText(file);
+
+            var props = JsonSerializer.Deserialize<BoardProps>(jsonString);
+
+            board = new Board(props.width, props.height, props.cellSize, props.lifeDensity);
         }
+
+        static private void SaveBoard(string file)
+        {
+            using (StreamWriter sw = new StreamWriter(file))
+            {
+                for (int i = 0; i < board.Rows; i++)
+                {
+                    for (int j = 0; j < board.Columns; j++)
+                    {
+                        sw.Write(board.Cells[j, i].IsAlive ? '1' : '0');
+                    }
+                    sw.WriteLine();
+                }
+            }
+        }
+
+        static private void LoadBoard(string file)
+        {
+            using (StreamReader sr = new StreamReader(file))
+            {
+                var lines = File.ReadAllLines(file);
+                int col = board.Cells.GetLength(0);
+                int rows = board.Cells.GetLength(1);
+
+                for (int i = 0; i < rows; i++)
+                {
+                    for (int j = 0; j < col; j++)
+                    {
+                        board.Cells[j, i].IsAlive = lines[i][j] == '1';
+                    }
+                }
+            }
+        }
+
+        static private void PlaceOnBoard(string template, int xOffset, int yOffset)
+        {
+            var lines = File.ReadAllLines(template);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                for (int j = 0; j < lines[i].Length; j++)
+                {
+                    int xCoordinate = (j + xOffset) % board.Columns;
+                    int yCoordinate = (i + yOffset) % board.Rows;
+                    board.Cells[xCoordinate, yCoordinate].IsAlive = '1' == lines[i][j];
+                }
+            }
+        }
+
         static void Render()
         {
             for (int row = 0; row < board.Rows; row++)
@@ -118,9 +174,27 @@ namespace cli_life
         }
         static void Main(string[] args)
         {
-            Reset();
-            while(true)
+            string dir = Directory.GetParent(Environment.CurrentDirectory)
+                    .Parent
+                    .Parent
+                    .FullName;
+            string cfg = Path.Combine(dir, "application.json");
+            string backup = Path.Combine(dir, "backup.txt");
+            string templateExample = Path.Combine(dir, "templates/snake.txt");
+
+            SetUpBoard(cfg);
+            LoadBoard(backup);
+
+            PlaceOnBoard(templateExample, 0, 0);
+
+            int generationNumber = 0;
+            while (true)
             {
+                generationNumber++;
+                if (generationNumber % 100 == 0)
+                {
+                    SaveBoard(backup);
+                }
                 Console.Clear();
                 Render();
                 board.Advance();
