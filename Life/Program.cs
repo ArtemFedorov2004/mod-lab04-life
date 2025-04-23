@@ -86,6 +86,71 @@ namespace cli_life
             }
         }
     }
+
+    public class Utils
+    {
+        public static int Cells(Board board)
+        {
+            int total = 0;
+
+            for (int x = 0; x < board.Columns; x++)
+            {
+                for (int y = 0; y < board.Rows; y++)
+                {
+                    if (board.Cells[x, y].IsAlive)
+                    {
+                        total++;
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        public static int Combinations(Board board)
+        {
+            var combinations = new List<List<(int, int)>>();
+            bool[,] visited = new bool[board.Columns, board.Rows];
+
+            for (int i = 0; i < board.Columns; i++)
+            {
+                for (int j = 0; j < board.Rows; j++)
+                {
+                    if (board.Cells[i, j].IsAlive && !visited[i, j])
+                    {
+                        var group = new List<(int, int)>();
+                        DFS(board, visited, group, i, j);
+                        combinations.Add(group);
+                    }
+                }
+            }
+
+            return combinations.Count;
+        }
+
+        private static void DFS(Board board, bool[,] visited, List<(int, int)> group, int x, int y)
+        {
+            if (visited[x, y] || !board.Cells[x, y].IsAlive)
+                return;
+
+            visited[x, y] = true;
+            group.Add((x, y));
+
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+
+                    int X = (x + dx + board.Columns) % board.Columns;
+                    int Y = (y + dy + board.Rows) % board.Rows;
+
+                    DFS(board, visited, group, X, Y);
+                }
+            }
+        }
+    }
+
     record BoardProps(
             int width,
             int height,
@@ -197,6 +262,11 @@ namespace cli_life
                 }
                 Console.Clear();
                 Render();
+
+                int liveCells = Utils.Cells(board);
+                int combinations = Utils.Combinations(board);
+                Console.WriteLine($"Количество элементов: клеток : {liveCells}, комбинаций : {combinations}");
+
                 board.Advance();
                 Thread.Sleep(1000);
             }
