@@ -218,6 +218,27 @@ namespace cli_life
             }
         }
 
+        static int OnClick(string file)
+        {
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true).Key;
+                if (key == ConsoleKey.Escape)
+                {
+                    return 1;
+                }
+                if (key == ConsoleKey.S)
+                {
+                    SaveBoard(file);
+                }
+                if (key == ConsoleKey.L)
+                {
+                    LoadBoard(file);
+                }
+            }
+            return 0;
+        }
+
         static void Render()
         {
             for (int row = 0; row < board.Rows; row++)
@@ -248,18 +269,16 @@ namespace cli_life
             string templateExample = Path.Combine(dir, "templates/snake.txt");
 
             SetUpBoard(cfg);
-            LoadBoard(backup);
 
             PlaceOnBoard(templateExample, 0, 0);
 
             int generationNumber = 0;
             while (true)
             {
+                if (OnClick(backup) == 1)
+                    break;
+
                 generationNumber++;
-                if (generationNumber % 100 == 0)
-                {
-                    SaveBoard(backup);
-                }
                 Console.Clear();
                 Render();
 
