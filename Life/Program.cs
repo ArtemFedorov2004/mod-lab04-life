@@ -107,7 +107,7 @@ namespace cli_life
             return total;
         }
 
-        public static int Combinations(Board board)
+        public static List<List<(int, int)>> Combinations(Board board)
         {
             var combinations = new List<List<(int, int)>>();
             bool[,] visited = new bool[board.Columns, board.Rows];
@@ -125,7 +125,13 @@ namespace cli_life
                 }
             }
 
-            return combinations.Count;
+            return combinations;
+        }
+
+        public static int CombinationsCount(Board board)
+        {
+            return Combinations(board)
+                .Count;
         }
 
         private static void DFS(Board board, bool[,] visited, List<(int, int)> group, int x, int y)
@@ -148,6 +154,161 @@ namespace cli_life
                     DFS(board, visited, group, X, Y);
                 }
             }
+        }
+    }
+
+    public class TemplatesClassifier
+    {
+        private Dictionary<string, int[,]> _templates = new Dictionary<string, int[,]>();
+
+        private void LoadTemplates(string[] files)
+        {
+            var templates = new Dictionary<string, int[,]>();
+            string dir = Path.Combine(
+                Directory.GetParent(Environment.CurrentDirectory)
+                    .Parent
+                    .Parent
+                    .FullName,
+                "templates");
+
+            for (int i = 0; i < files.Length; i++)
+            {
+                string path = Path.Combine(dir, files[i]);
+                if (!File.Exists(path))
+                {
+                    throw new FileNotFoundException(path);
+                }
+
+                string templateTitle = files[i].Remove(files[i].Length - 4);
+                _templates[templateTitle] = ReadTemplate(path);
+            }
+        }
+
+        private int[,] ReadTemplate(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var template = new int[lines[0].Length, lines.Length];
+
+            for (int y = 0; y < lines.Length; y++)
+                for (int x = 0; x < lines[y].Length; x++)
+                    template[x, y] = lines[y][x] == '1' ? 1 : 0;
+
+            return template;
+        }
+
+        public TemplatesClassifier(string[] files)
+        {
+            LoadTemplates(files);
+        }
+
+        public Dictionary<string, int> ClassifyBoard(Board board)
+        {
+            var result = _templates.Keys.ToDictionary(k => k, _ => 0);
+            result["unknown"] = 0;
+
+            List<List<(int, int)>> combinations = Utils.Combinations(board);
+
+            foreach (var combination in combinations)
+            {
+                result[Classify(combination)] += 1;
+            }
+
+            return result;
+        }
+
+        private string Classify(List<(int, int)> combination)
+        {
+            int[,] combinationTemplate = FormTemplate(combination);
+
+            foreach (var kvp in _templates)
+            {
+                if (AreTemplatesEqual(kvp.Value, combinationTemplate))
+                {
+                    return kvp.Key;
+                }
+            }
+
+            return "unknown";
+        }
+
+        private int[,] FormTemplate(List<(int x, int y)> combination)
+        {
+            int minY = combination.Min(c => c.y);
+            int maxY = combination.Max(c => c.y);
+
+            int minX = combination.Min(c => c.x);
+            int maxX = combination.Max(c => c.x);
+
+            var template = new int[maxX - minX + 1, maxY - minY + 1];
+
+            foreach (var (x, y) in combination)
+                template[x - minX, y - minY] = 1;
+
+            return template;
+        }
+
+        private static bool AreTemplatesEqual(int[,] template1, int[,] template2)
+        {
+            if (template1.GetLength(0) != template2.GetLength(0) || template1.GetLength(1) != template2.GetLength(1))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < template1.GetLength(0); i++)
+            {
+                for (int j = 0; j < template1.GetLength(1); j++)
+                {
+                    if (template1[i, j] != template2[i, j])
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+    }
+
+    public class StabilityChecker
+    {
+        private int _stablePhases;
+
+        private int _liveCells;
+
+        private int _minStablePhases;
+
+        public StabilityChecker()
+        {
+            _stablePhases = 0;
+            _liveCells = 0;
+            _minStablePhases = 6;
+        }
+
+        public bool Check(int liveCells)
+        {
+            if (_stablePhases != 0)
+            {
+                if (_liveCells == liveCells)
+                {
+                    _stablePhases += 1;
+                    if (_stablePhases >= _minStablePhases)
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    _stablePhases = 1;
+                    _liveCells = liveCells;
+                }
+            }
+            else
+            {
+                _stablePhases += 1;
+                _liveCells = liveCells;
+            }
+
+            return false;
         }
     }
 
@@ -243,7 +404,7 @@ namespace cli_life
         {
             for (int row = 0; row < board.Rows; row++)
             {
-                for (int col = 0; col < board.Columns; col++)   
+                for (int col = 0; col < board.Columns; col++)
                 {
                     var cell = board.Cells[col, row];
                     if (cell.IsAlive)
@@ -258,6 +419,38 @@ namespace cli_life
                 Console.Write('\n');
             }
         }
+
+        static TemplatesClassifier _templatesClassifier;
+
+        static void SetUpTemplatesClassifier()
+        {
+            string[] templateFileNames =
+            {
+                "block.txt",
+                "box.txt",
+                "glider.txt",
+                "hive.txt",
+                "long_ship.txt",
+                "pond.txt",
+                "snake.txt",
+            };
+
+            _templatesClassifier = new TemplatesClassifier(templateFileNames);
+        }
+        static void PrintClassification()
+        {
+            var dict = _templatesClassifier.ClassifyBoard(board);
+
+            Console.WriteLine("Фигуры:");
+            Console.WriteLine("Название --- количество");
+            foreach (var kvp in dict.Where(r => r.Value > 0))
+            {
+                Console.WriteLine($"{kvp.Key}: {kvp.Value}");
+            }
+        }
+
+        static StabilityChecker _stabilityChecker = new StabilityChecker();
+
         static void Main(string[] args)
         {
             string dir = Directory.GetParent(Environment.CurrentDirectory)
@@ -269,6 +462,7 @@ namespace cli_life
             string templateExample = Path.Combine(dir, "templates/snake.txt");
 
             SetUpBoard(cfg);
+            SetUpTemplatesClassifier();
 
             PlaceOnBoard(templateExample, 0, 0);
 
@@ -283,11 +477,17 @@ namespace cli_life
                 Render();
 
                 int liveCells = Utils.Cells(board);
-                int combinations = Utils.Combinations(board);
+                int combinations = Utils.CombinationsCount(board);
                 Console.WriteLine($"Количество элементов: клеток : {liveCells}, комбинаций : {combinations}");
+                if (_stabilityChecker.Check(liveCells))
+                {
+                    Console.WriteLine("Достигнуто состояние стабильности");
+                }
+
+                PrintClassification();
 
                 board.Advance();
-                Thread.Sleep(1000);
+                Thread.Sleep(10);
             }
         }
     }
