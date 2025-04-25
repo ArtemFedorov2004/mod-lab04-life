@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.IO;
 using System.Text.Json;
+using ScottPlot;
 
 namespace cli_life
 {
@@ -395,6 +396,7 @@ namespace cli_life
                 if (key == ConsoleKey.L)
                 {
                     LoadBoard(file);
+                    _stabilityChecker = new StabilityChecker();
                 }
             }
             return 0;
@@ -451,6 +453,8 @@ namespace cli_life
 
         static StabilityChecker _stabilityChecker = new StabilityChecker();
 
+        static int _generationNumber;
+
         static void Main(string[] args)
         {
             string dir = Directory.GetParent(Environment.CurrentDirectory)
@@ -466,22 +470,36 @@ namespace cli_life
 
             PlaceOnBoard(templateExample, 0, 0);
 
-            int generationNumber = 0;
+            GameLoop(backup);
+
+            //AverageValueOfStableGenerations(cfg, backup);
+
+            //PrepareDataForPlot(cfg, backup);
+
+            //string dataFile = Path.Combine(dir, "data.txt");
+            //string plotFile = Path.Combine(dir, "plot.png");
+            //CreatePopulationPlot(dataFile, plotFile);
+        }
+
+        static void GameLoop(string backup)
+        {
+            _generationNumber = 0;
             while (true)
             {
                 if (OnClick(backup) == 1)
                     break;
 
-                generationNumber++;
+                _generationNumber++;
                 Console.Clear();
                 Render();
 
                 int liveCells = Utils.Cells(board);
                 int combinations = Utils.CombinationsCount(board);
-                Console.WriteLine($"Количество элементов: клеток : {liveCells}, комбинаций : {combinations}");
+                Console.WriteLine($"Число элементов. Клеток : {liveCells}, Комбинаций : {combinations}");
                 if (_stabilityChecker.Check(liveCells))
                 {
-                    Console.WriteLine("Достигнуто состояние стабильности");
+                    Console.WriteLine($"Система стабилизировалась на поколении {_generationNumber}");
+                    return;
                 }
 
                 PrintClassification();
@@ -489,6 +507,108 @@ namespace cli_life
                 board.Advance();
                 Thread.Sleep(10);
             }
+        }
+
+        static void AverageValueOfStableGenerations(string cfg, string backup)
+        {
+            int numberOfStarts = 16;
+            double lifeDensity = 0.1;
+
+            string outDir = Path.Combine(
+                Directory.GetParent(Environment.CurrentDirectory)
+                    .Parent
+                    .Parent
+                    .FullName,
+                "average_value_of_stable_generations");
+
+            while (lifeDensity < 0.9)
+            {
+                string jsonString = File.ReadAllText(cfg);
+
+                var props = JsonSerializer.Deserialize<BoardProps>(jsonString);
+
+                string fileName = $"life_density_{lifeDensity:0.0}.txt".Replace(',', '.');
+                string filePath = Path.Combine(outDir, fileName);
+                string str;
+                List<int> generations = [];
+
+                using (FileStream fs = File.Create(filePath))
+                {
+                }
+                for (int i = 0; i < numberOfStarts; i++)
+                {
+                    _stabilityChecker = new StabilityChecker();
+                    _generationNumber = 0;
+                    board = new Board(props.width, props.height, props.cellSize, lifeDensity);
+
+                    GameLoop(backup);
+                    generations.Add(_generationNumber);
+                    str = $"Номер запуска - {i + 1}. Число поколений: {_generationNumber}\n";
+                    File.AppendAllText(filePath, str);
+                }
+                str = $"Среднее число поколений: {Math.Round(generations.Average())}\n";
+                File.AppendAllText(filePath, str);
+                lifeDensity += 0.1;
+            }
+        }
+
+        private static void PrepareDataForPlot(string cfg, string backup)
+        {
+            double lifeDensity = 0;
+            double step = 0.02;
+            string file = Path.Combine(
+                Directory.GetParent(Environment.CurrentDirectory)
+                    .Parent
+                    .Parent
+                    .FullName,
+                "data.txt");
+
+            string str = "Количество поколений в зависимости от плотности\n";
+            File.AppendAllText(file, str);
+            while (lifeDensity < 1.01)
+            {
+                string jsonString = File.ReadAllText(cfg);
+
+                var props = JsonSerializer.Deserialize<BoardProps>(jsonString);
+
+                _stabilityChecker = new StabilityChecker();
+                _generationNumber = 0;
+                board = new Board(props.width, props.height, props.cellSize, lifeDensity);
+
+                GameLoop(backup);
+
+                str = $"{Math.Round(lifeDensity, 2)} {_generationNumber}\n";
+                File.AppendAllText(file, str);
+                lifeDensity += step;
+            }
+        }
+
+        private static void CreatePopulationPlot(string dataFile, string plotFile)
+        {
+            var data = File.ReadAllLines(dataFile)
+                .Skip(1)
+                .Select(line => line.Split(' '))
+                .Where(parts => parts.Length == 2)
+                .Select(parts => new {
+                    LifeDensity = double.Parse(parts[0]),
+                    NumberOfGenerations = int.Parse(parts[1])
+                })
+                .ToList();
+
+            var plot = new Plot();
+
+            var lifeDensities = data.Select(x => (double)x.LifeDensity).ToArray();
+            var generations = data.Select(x => (double)x.NumberOfGenerations).ToArray();
+            var scatter = plot.Add.Scatter(lifeDensities, generations);
+            scatter.MarkerSize = 1;
+
+            plot.YLabel("Количество поколений", size: 15);
+            plot.XLabel("Плотность", size: 15);
+            plot.Title("Количество поколений в зависимости от плотности", size: 17);
+
+            plot.Axes.AutoScale();
+
+            plot.SavePng(plotFile, 600, 600);
         }
     }
 }
